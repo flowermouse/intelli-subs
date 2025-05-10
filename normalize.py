@@ -94,7 +94,13 @@ def normalize_subtitles(subtitles):
         # 查找中间的标点符号位置
         split_positions = []
         for i in range(len(text) - 1):  # 不检查最后一个字符
+            # 判断是否为标点+空格
             if text[i] in punctuations and text[i + 1] == ' ':
+                # 对于逗号，判断是否在数字之间
+                if text[i] in {',', '，'}:
+                    if i > 0 and i + 1 < len(text) - 1:
+                        if text[i-1].isdigit() and text[i+2].isdigit():
+                            continue  # 跳过数字中的逗号
                 split_positions.append(i)
         
         # 如果没有中间标点，保持不变
