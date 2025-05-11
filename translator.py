@@ -8,6 +8,7 @@ from pathlib import Path
 import google.generativeai as genai
 from zhipuai import ZhipuAI
 from dotenv import load_dotenv
+import requests
 
 # 加载环境变量
 load_dotenv()
@@ -65,8 +66,6 @@ def translate_batch_zhipu(subtitle_batch, source_language='en', target_lang='zh'
     
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    print(f"发送批次翻译请求，包含 {len(subtitle_batch)} 条字幕...")
-    
     system_prompt = f"""你的工作是将用户给出的SRT字幕内容从{language_map[source_language]}翻译成{language_map[target_lang]}:
 翻译要求:
 1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等
@@ -112,7 +111,7 @@ def translate_batch_zhipu(subtitle_batch, source_language='en', target_lang='zh'
                 'translated_text': translated_text
             })
         
-        print(f"成功翻译 {len(translated_subtitles)} 条字幕")
+        print(f"成功翻译 {len(translated_subtitles)} / {len(subtitle_batch)} 条字幕")
         return translated_subtitles
     except Exception as e:
         print(f"翻译出错: {str(e)}")
@@ -209,6 +208,89 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
         return []
 
 
+import requests
+
+def translate_batch_ollama(subtitle_batch, source_language='en', target_lang='zh', model='gemma3:27b'):
+    """
+    使用本地 Ollama LLM 批量翻译字幕，保留完整SRT格式
+
+    参数:
+    - subtitle_batch: 字幕对象列表，每个对象包含index, time_start, time_end和text
+    - source_language: 源语言代码
+    - target_lang: 目标语言代码
+    - model: Ollama 本地模型名称（如 'llama3'）
+
+    返回:
+    - 翻译结果列表，每个元素包含index, time_start, time_end和translated_text
+    """
+    # Ollama API endpoint
+    OLLAMA_API_URL = "http://localhost:11434/api/generate"
+
+    language_map = {'en': '英文', 'zh': '中文'}
+
+    # 准备输入格式，完全保留原始SRT格式
+    formatted_subtitles = []
+    for sub in subtitle_batch:
+        formatted_subtitles.append(f"{sub['index']}\n{sub['time_start']} --> {sub['time_end']}\n{sub['text']}")
+    formatted_input = "\n\n".join(formatted_subtitles)
+
+    prompt = f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}，要求：
+1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本，严格保证字幕条数相等。
+2. 直接返回完整的翻译后SRT格式。
+3. 输出格式示例：
+   序号
+   时间戳
+   中文翻译文本
+
+   序号
+   时间戳
+   中文翻译文本
+
+   (以此类推)
+
+字幕内容如下：
+
+{formatted_input}
+"""
+
+    try:
+        response = requests.post(
+            OLLAMA_API_URL,
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=120
+        )
+        response.raise_for_status()
+        response_json = response.json()
+        response_text = response_json.get("response", "").strip()
+
+        # 解析返回的SRT格式 (包括序号、时间戳和翻译文本)
+        translated_subtitles = []
+        pattern = re.compile(r'(\d+)\s+([\d:,]+)\s+-->\s+([\d:,]+)\s+([\s\S]+?)(?=\n\n\d+|\Z)', re.MULTILINE)
+
+        for match in pattern.finditer(response_text):
+            index = match.group(1)
+            time_start = match.group(2)
+            time_end = match.group(3)
+            translated_text = match.group(4).strip()
+
+            translated_subtitles.append({
+                'index': index,
+                'time_start': time_start,
+                'time_end': time_end,
+                'translated_text': translated_text
+            })
+
+        print(f"Ollama翻译成功 {len(translated_subtitles)} / {len(subtitle_batch)} 条字幕")
+        return translated_subtitles
+    except Exception as e:
+        print(f"Ollama翻译出错: {str(e)}")
+        return []
+    
+
 def create_smart_batches(subtitles, min_size=30, max_size=50):
     """
     智能分批字幕，确保每批大小在min_size和max_size之间，且每批的最后一条字幕以标点符号结束
@@ -304,6 +386,8 @@ def translate_srt_file(input_file, source_language='en', target_language='zh', a
             translated_texts = translate_batch_zhipu(batch, source_language, target_language)
         elif agent == 'gemini':
             translated_texts = translate_batch_gemini(batch, source_language, target_language)
+        elif agent == 'ollama':
+            translated_texts = translate_batch_ollama(batch, source_language, target_language)
         
         # 如果翻译成功，整合结果
         if translated_texts:
@@ -363,7 +447,7 @@ def main():
     parser.add_argument('-o', '--output', help='输出的中文SRT文件路径（可选）')
     parser.add_argument('--source-lang', type=str, default='en', help='源语言（默认英文）')
     parser.add_argument('--target-lang', type=str, default='zh', help='目标语言（默认中文）')
-    parser.add_argument('--agent', choices=['zhipu', 'gemini'], default='zhipu', help='翻译代理（默认智谱）')
+    parser.add_argument('--agent', choices=['zhipu', 'gemini', 'ollama'], default='zhipu', help='翻译代理（默认智谱，可选ollama/gemini/zhipu）')
     parser.add_argument('--min-batch', type=int, default=30, help='每批最小字幕数量（默认30）')
     parser.add_argument('--max-batch', type=int, default=50, help='每批最大字幕数量（默认50）')
     
