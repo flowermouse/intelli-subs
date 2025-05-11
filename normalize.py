@@ -93,6 +93,7 @@ def normalize_subtitles(subtitles):
         
         # 查找中间的标点符号位置
         split_positions = []
+        last_sep = 0
         for i in range(len(text) - 1):  # 不检查最后一个字符
             # 判断是否为标点+空格
             if text[i] in punctuations and text[i + 1] == ' ':
@@ -101,6 +102,11 @@ def normalize_subtitles(subtitles):
                     if i > 0 and i + 1 < len(text) - 1:
                         if text[i-1].isdigit() and text[i+2].isdigit():
                             continue  # 跳过数字中的逗号
+                # 对于长度只有一个单词的句子，不要分句
+                seg_text = text[last_sep:i].strip()
+                if len(seg_text.split()) <= 1:
+                    last_sep = i + 1
+                    continue
                 split_positions.append(i)
         
         # 如果没有中间标点，保持不变
@@ -122,14 +128,14 @@ def normalize_subtitles(subtitles):
             # 计算当前分段的结束时间
             current_end_time_ms = int(start_time_ms + (pos + 1) * time_per_char)
             
-            # 创建新的字幕条目
-            split_subtitles.append({
+            seg_text = text[start_idx:pos+1].strip()
+            entry = {
                 'index': subtitle['index'],  # 暂时保留原索引，稍后重新编号
                 'time_start': format_time(current_start_time_ms),
                 'time_end': format_time(current_end_time_ms),
-                'text': text[start_idx:pos+1].strip()
-            })
-            
+                'text': seg_text
+            }
+            split_subtitles.append(entry)
             # 更新下一段的起始位置和时间
             start_idx = pos + 1
             current_start_time_ms = current_end_time_ms

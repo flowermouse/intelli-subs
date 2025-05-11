@@ -81,7 +81,7 @@ def transcribe_audio_local(model, file_path, language=None):
         for i, segment in enumerate(segments, 1):
             start_time = format_timestamp(segment["start"])
             end_time = format_timestamp(segment["end"])
-            text = segment["text"].strip()
+            text = segment["text"].replace("```", "").strip()
             
             srt_content.extend([
                 f"{i}",
