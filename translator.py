@@ -137,8 +137,10 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
     # 配置Gemini API
     genai.configure(api_key=GEMINI_API_KEY)
 
-    # 使用 Gemini 2.0 Flash Lite 模型
+    # 使用 Gemini 2.0 Flash 模型
     model = genai.GenerativeModel('gemini-2.0-flash')
+    # 使用 Gemini 2.5 Flash 模型
+    # model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
 
     language_map = {'en': '英文', 'zh': '中文'}
     
@@ -154,7 +156,7 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
 {formatted_input}
 
 翻译要求:
-1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等
+1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等（重要）
 2. 直接返回完整的翻译后SRT格式
 3. 确保输出格式为:
    序号
@@ -291,6 +293,75 @@ def translate_batch_ollama(subtitle_batch, source_language='en', target_lang='zh
         return []
     
 
+def translate_batch_openrouter(subtitle_batch, source_language='en', target_lang='zh', model="qwen/qwen3-235b-a22b:free"): 
+    """
+    使用 openrouter.ai API 批量翻译字幕，保留完整SRT格式
+    
+    参数:
+    - subtitle_batch: 字幕对象列表，每个对象包含index, time_start, time_end和text
+    - source_language: 源语言代码
+    - target_lang: 目标语言代码
+    - model: openrouter 支持的模型名称
+    
+    返回:
+    - 翻译结果列表，每个元素包含index, time_start, time_end和translated_text
+    """
+    import os
+    import re
+    from openai import OpenAI
+
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    if not OPENROUTER_API_KEY:
+        print("错误：未设置OPENROUTER_API_KEY环境变量")
+        return []
+
+    language_map = {'en': '英文', 'zh': '中文'}
+    formatted_subtitles = []
+    for sub in subtitle_batch:
+        formatted_subtitles.append(f"{sub['index']}\n{sub['time_start']} --> {sub['time_end']}\n{sub['text']}")
+    formatted_input = "\n\n".join(formatted_subtitles)
+
+    prompt = f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}：\n\n{formatted_input}\n\n翻译要求:\n1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等\n2. 直接返回完整的翻译后SRT格式\n3. 确保输出格式为:\n   序号\n   时间戳\n   中文翻译文本\n\n   序号\n   时间戳\n   中文翻译文本\n   (以此类推)\n"""
+
+    try:
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_API_KEY,
+        )
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            extra_headers={
+                # 可选：可自定义 Referer 和 X-Title
+                # "HTTP-Referer": "https://your-site.com",
+                # "X-Title": "YourSiteName",
+            },
+            extra_body={},
+            timeout=120
+        )
+        response_text = completion.choices[0].message.content.strip()
+        # 解析返回的SRT格式 (包括序号、时间戳和翻译文本)
+        translated_subtitles = []
+        pattern = re.compile(r'(\d+)\s+([\d:,]+)\s+-->\s+([\d:,]+)\s+([\s\S]+?)(?=\n\n\d+|\Z)', re.MULTILINE)
+        for match in pattern.finditer(response_text):
+            index = match.group(1)
+            time_start = match.group(2)
+            time_end = match.group(3)
+            translated_text = match.group(4).strip()
+            translated_subtitles.append({
+                'index': index,
+                'time_start': time_start,
+                'time_end': time_end,
+                'translated_text': translated_text
+            })
+        print(f"openrouter翻译成功 {len(translated_subtitles)} / {len(subtitle_batch)} 条字幕")
+        return translated_subtitles
+    except Exception as e:
+        print(f"openrouter翻译出错: {str(e)}")
+        return []
+
 def create_smart_batches(subtitles, min_size=30, max_size=50):
     """
     智能分批字幕，确保每批大小在min_size和max_size之间，且每批的最后一条字幕以标点符号结束
@@ -388,6 +459,8 @@ def translate_srt_file(input_file, source_language='en', target_language='zh', a
             translated_texts = translate_batch_gemini(batch, source_language, target_language)
         elif agent == 'ollama':
             translated_texts = translate_batch_ollama(batch, source_language, target_language)
+        elif agent == 'openrouter':
+            translated_texts = translate_batch_openrouter(batch, source_language, target_language)
         
         # 如果翻译成功，整合结果
         if translated_texts:
@@ -402,7 +475,7 @@ def translate_srt_file(input_file, source_language='en', target_language='zh', a
                         'index': batch[j]['index'],
                         'time_start': batch[j]['time_start'],
                         'time_end': batch[j]['time_end'],
-                        'translated_text': text
+                        'translated_text': text.replace("```", "").strip()
                     }
                     all_translations.append(subtitle_item)
         else:
@@ -447,7 +520,7 @@ def main():
     parser.add_argument('-o', '--output', help='输出的中文SRT文件路径（可选）')
     parser.add_argument('--source-lang', type=str, default='en', help='源语言（默认英文）')
     parser.add_argument('--target-lang', type=str, default='zh', help='目标语言（默认中文）')
-    parser.add_argument('--agent', choices=['zhipu', 'gemini', 'ollama'], default='zhipu', help='翻译代理（默认智谱，可选ollama/gemini/zhipu）')
+    parser.add_argument('--agent', choices=['zhipu', 'gemini', 'ollama', 'openrouter'], default='zhipu', help='翻译代理（默认智谱，可选ollama/gemini/zhipu/openrouter）')
     parser.add_argument('--min-batch', type=int, default=30, help='每批最小字幕数量（默认30）')
     parser.add_argument('--max-batch', type=int, default=50, help='每批最大字幕数量（默认50）')
     
