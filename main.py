@@ -77,6 +77,7 @@ def main():
                       help='翻译后的目标语言（zh：中文，en：英文），默认为中文')
     parser.add_argument('-m', '--model', choices=['tiny', 'base', 'small', 'medium', 'turbo', 'large'], default='turbo',
                       help='Whisper模型大小（默认turbo，越大越精确但越慢）')
+    parser.add_argument('-t', '--theme', help='音频/视频主题（用于转录时的初始提示）', default='YouTube video')
     parser.add_argument('-a', '--agent', choices=['gemini', 'zhipu'], default='zhipu',
                       help='翻译代理（gemini, zhipu），默认为智谱翻译）')
     parser.add_argument('--skip-transcribe', action='store_true',
@@ -105,7 +106,7 @@ def main():
     input_path = Path(input_file)
     
     # 根据输入文件名生成各阶段的输出文件名
-    transcribed_srt = str(intermediate_dir / f"{input_path.stem}_transcribed.srt")
+    transcribed_srt = str(intermediate_dir / f"{input_path.stem}.srt")
     normalized_srt = str(intermediate_dir / f"{input_path.stem}_normalized.srt")
     
     # 如果未指定最终输出文件，则根据输入文件名生成
@@ -134,9 +135,9 @@ def main():
         # 调用转录功能
         transcribe(
             input_file,
-            transcribed_srt,
             args.model,
             args.source_language,
+            args.theme
         )
         
         step_time = time.time() - step_start_time
