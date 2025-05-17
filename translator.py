@@ -321,8 +321,26 @@ def translate_batch_openrouter(subtitle_batch, source_language='en', target_lang
         formatted_subtitles.append(f"{sub['index']}\n{sub['time_start']} --> {sub['time_end']}\n{sub['text']}")
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    prompt = f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}：\n\n{formatted_input}\n\n翻译要求:\n1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等\n2. 直接返回完整的翻译后SRT格式\n3. 确保输出格式为:\n   序号\n   时间戳\n   中文翻译文本\n\n   序号\n   时间戳\n   中文翻译文本\n   (以此类推)\n"""
+    prompt = f"""请将以下SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}，
+该字幕文件是 YouTube 上关于星球大战剧集《安多》中的人物卢森·雷尔的剪辑视频。
+要求：
+1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本，严格保证字幕条数相等。
+2. 直接返回完整的翻译后SRT格式。
+3. 输出格式示例：
+   序号
+   时间戳
+   中文翻译文本
 
+   序号
+   时间戳
+   中文翻译文本
+
+   (以此类推)
+
+字幕内容如下：
+
+{formatted_input}
+"""
     try:
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
@@ -475,7 +493,7 @@ def translate_srt_file(input_file, source_language='en', target_language='zh', a
                         'index': batch[j]['index'],
                         'time_start': batch[j]['time_start'],
                         'time_end': batch[j]['time_end'],
-                        'translated_text': text.replace("```", "").strip()
+                        'translated_text': text['translated_text'].replace('```', '').strip()
                     }
                     all_translations.append(subtitle_item)
         else:
