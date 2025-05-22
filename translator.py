@@ -13,6 +13,26 @@ import requests
 # 加载环境变量
 load_dotenv()
 
+def get_prompt(source, target, formatted_input):
+    return f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{source}翻译成{target}:
+
+{formatted_input}
+
+翻译要求:
+1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等（重要）
+2. 直接返回完整的翻译后SRT格式
+3. 确保输出格式为:
+   序号
+   时间戳
+   中文翻译文本
+
+   序号
+   时间戳
+   中文翻译文本
+   
+   (以此类推)
+"""
+
 def parse_srt(file_path):
     """解析SRT文件，返回字幕条目列表"""
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -66,28 +86,13 @@ def translate_batch_zhipu(subtitle_batch, source_language='en', target_lang='zh'
     
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    system_prompt = f"""你的工作是将用户给出的SRT字幕内容从{language_map[source_language]}翻译成{language_map[target_lang]}:
-翻译要求:
-1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等
-2. 直接返回完整的翻译后SRT格式
-3. 确保输出格式为:
-   序号
-   时间戳
-   中文翻译文本
-
-   序号
-   时间戳
-   中文翻译文本
-   
-   (以此类推)
-"""
+    prompt = get_prompt(language_map[source_language], language_map[target_lang], formatted_input)
     
     try:
         response = client.chat.completions.create(
             model="glm-4-flash",  # 使用智谱的 GLM-4-flash 模型
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": formatted_input}
+                {"role": "user", "content": prompt}
             ],
         )
         
@@ -115,7 +120,6 @@ def translate_batch_zhipu(subtitle_batch, source_language='en', target_lang='zh'
         return translated_subtitles
     except Exception as e:
         print(f"翻译出错: {str(e)}")
-        # 返回空列表
         return []
 
 def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh'):
@@ -151,24 +155,7 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
     
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    prompt = f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{language_map[source_language]}翻译成{language_map[target_lang]}:
-
-{formatted_input}
-
-翻译要求:
-1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本, 并且严格保证字幕条数相等（重要）
-2. 直接返回完整的翻译后SRT格式
-3. 确保输出格式为:
-   序号
-   时间戳
-   中文翻译文本
-
-   序号
-   时间戳
-   中文翻译文本
-   
-   (以此类推)
-"""
+    prompt = get_prompt(language_map[source_language], language_map[target_lang], formatted_input)
     
     try:
         response = model.generate_content(prompt)
@@ -205,12 +192,7 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
                 print(f" - {model.name}")
         except Exception as list_error:
             print(f"无法获取可用模型列表: {str(list_error)}")
-        
-        # 返回空列表
         return []
-
-
-import requests
 
 def translate_batch_ollama(subtitle_batch, source_language='en', target_lang='zh', model='gemma3:27b'):
     """
@@ -236,24 +218,7 @@ def translate_batch_ollama(subtitle_batch, source_language='en', target_lang='zh
         formatted_subtitles.append(f"{sub['index']}\n{sub['time_start']} --> {sub['time_end']}\n{sub['text']}")
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    prompt = f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}，要求：
-1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本，严格保证字幕条数相等。
-2. 直接返回完整的翻译后SRT格式。
-3. 输出格式示例：
-   序号
-   时间戳
-   中文翻译文本
-
-   序号
-   时间戳
-   中文翻译文本
-
-   (以此类推)
-
-字幕内容如下：
-
-{formatted_input}
-"""
+    prompt = get_prompt(language_map[source_language], language_map[target_lang], formatted_input)
 
     try:
         response = requests.post(
@@ -321,26 +286,8 @@ def translate_batch_openrouter(subtitle_batch, source_language='en', target_lang
         formatted_subtitles.append(f"{sub['index']}\n{sub['time_start']} --> {sub['time_end']}\n{sub['text']}")
     formatted_input = "\n\n".join(formatted_subtitles)
 
-    prompt = f"""请将以下SRT字幕文件从{language_map.get(source_language, source_language)}翻译成{language_map.get(target_lang, target_lang)}，
-该字幕文件是 YouTube 上关于星球大战剧集《安多》中的人物卢森·雷尔的剪辑视频。
-要求：
-1. 保留原始SRT格式，包括序号、时间戳（序号和时间戳不要变动）和翻译文本，严格保证字幕条数相等。
-2. 直接返回完整的翻译后SRT格式。
-3. 输出格式示例：
-   序号
-   时间戳
-   中文翻译文本
+    prompt = get_prompt(language_map[source_language], language_map[target_lang], formatted_input)
 
-   序号
-   时间戳
-   中文翻译文本
-
-   (以此类推)
-
-字幕内容如下：
-
-{formatted_input}
-"""
     try:
         client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
