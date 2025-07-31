@@ -5,7 +5,7 @@ import os
 import re
 import argparse
 from pathlib import Path
-import google.generativeai as genai
+from google import genai
 from zhipuai import ZhipuAI
 from dotenv import load_dotenv
 import requests
@@ -14,7 +14,7 @@ import requests
 load_dotenv()
 
 def get_prompt(source, target, formatted_input):
-    return f"""请将以下关于星球大战剧集"Andor"《安多》的SRT字幕文件从{source}翻译成{target}:
+    return f"""你是一个字幕翻译员，请将以下关于David Silver教授的Reinforcement Learning课程的SRT字幕文件从{source}翻译成{target}:
 
 {formatted_input}
 
@@ -139,12 +139,12 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
         raise ValueError("请设置GEMINI_API_KEY环境变量或在.env文件中配置")
 
     # 配置Gemini API
-    genai.configure(api_key=GEMINI_API_KEY)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     # 使用 Gemini 2.0 Flash 模型
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    # model = genai.GenerativeModel('gemini-2.0-flash')
     # 使用 Gemini 2.5 Flash 模型
-    # model = genai.GenerativeModel('gemini-2.5-flash-preview-04-17')
+    # model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
 
     language_map = {'en': '英文', 'zh': '中文'}
     
@@ -158,7 +158,13 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
     prompt = get_prompt(language_map[source_language], language_map[target_lang], formatted_input)
     
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt
+            # config=genai.types.GenerateContentConfig(
+            #     thinking_config=genai.types.ThinkingConfig(thinking_budget=0)
+            # )
+        )
         response_text = response.text.strip()
         
         # 解析返回的SRT格式 (包括序号、时间戳和翻译文本)
@@ -186,7 +192,7 @@ def translate_batch_gemini(subtitle_batch, source_language='en', target_lang='zh
         try:
             # 尝试列出可用模型，帮助用户排查问题
             print("尝试获取可用模型列表...")
-            available_models = genai.list_models()
+            available_models = client.models.list()
             print("可用的模型有:")
             for model in available_models:
                 print(f" - {model.name}")
