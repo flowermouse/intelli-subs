@@ -90,7 +90,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='ASR转字幕，自动分句并合并短句')
     parser.add_argument('input_audio', help='输入音频或视频文件路径')
     parser.add_argument('-o', '--output', help='输出SRT文件路径（可选）')
-    parser.add_argument('--chunk-minutes', type=int, default=10, help='每个分段的最大时长（分钟），默认10分钟')
+    parser.add_argument('--chunk-minutes', type=int, default=5, help='每个分段的最大时长（分钟），默认10分钟')
     args = parser.parse_args()
 
     input_audio = args.input_audio
@@ -98,11 +98,14 @@ if __name__ == "__main__":
     video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.webm'}
     input_ext = Path(input_audio).suffix.lower()
 
+    temp_dir = Path('./temp')
+    temp_dir.mkdir(exist_ok=True)
+
     if input_ext in audio_exts:
-        wav_audio = str(Path('./temp') / (Path(input_audio).stem + '.mono16k.wav'))
+        wav_audio = str(temp_dir / (Path(input_audio).stem + '.mono16k.wav'))
         ffmpeg_convert(input_audio, wav_audio)
     elif input_ext in video_exts:
-        wav_audio = str(Path('./temp') / (Path(input_audio).stem + '.mono16k.wav'))
+        wav_audio = str(temp_dir / (Path(input_audio).stem + '.mono16k.wav'))
         cmd = f"ffmpeg -y -i '{input_audio}' -vn -ac 1 -ar 16000 '{wav_audio}'"
         print(f"正在从视频提取音频并转码: {cmd}")
         os.system(cmd)
@@ -118,7 +121,7 @@ if __name__ == "__main__":
     print("正在进行语音识别...")
     # 使用NeMo的ASR模型进行语音识别
     all_srt_subs = []
-    asr_model = nemo_asr.models.ASRModel.restore_from("parakeet-tdt-0.6b-v2.nemo")
+    asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name="nvidia/parakeet-tdt-0.6b-v2")
     offset = 0.0
     for chunk_path in chunk_files:
         output = asr_model.transcribe([chunk_path], timestamps=True)
