@@ -3,6 +3,7 @@ import os
 import subprocess
 from pydub import AudioSegment
 from time import sleep
+import argparse
 
 SAMPLE_RATE = 24000  # edge-tts 默认输出 24kHz
 CHANNELS = 1
@@ -144,19 +145,28 @@ def save_wave(filename, audio: AudioSegment):
     audio.export(filename, format="wav")
 
 def main():
-    srt_file = "1_zh.srt"  # 替换为你的 SRT 文件路径
-    output_file = "1.wav"
-    voice_name = "zh-CN-YunxiaoMultilingualNeural"
+    # srt_file = "1_zh.srt"  # 替换为你的 SRT 文件路径
+    # output_file = "1.wav"
+    # voice_name = "zh-CN-YunxiaoMultilingualNeural"
+    parser = argparse.ArgumentParser(description="根据 SRT 文件生成配音音频")
+    parser.add_argument("--srt", required=True, help="输入 SRT 字幕文件路径")
+    parser.add_argument("--output_file", required=True, help="输出音频文件路径（wav 格式）")
+    parser.add_argument(
+        "--voice_name",
+        default="zh-CN-YunxiaoMultilingualNeural",
+        help="edge-tts 语音名称，默认 zh-CN-YunxiaoMultilingualNeural",
+    )
+    args = parser.parse_args()
 
-    print(f"📖 解析字幕文件: {srt_file}")
-    subtitles = parse_srt(srt_file)
+    print(f"📖 解析字幕文件: {args.srt}")
+    subtitles = parse_srt(args.srt)
     print(f"✅ 共 {len(subtitles)} 条字幕\n")
 
     print("🎙️  开始生成并对齐音频...")
-    merged_audio = align_and_merge_audio(subtitles, voice_name)
+    merged_audio = align_and_merge_audio(subtitles, args.voice_name)
 
-    print(f"\n💾 保存音频文件: {output_file}")
-    save_wave(output_file, merged_audio)
+    print(f"\n💾 保存音频文件: {args.output_file}")
+    save_wave(filename=args.output_file, audio=merged_audio)
     print("✅ 完成！")
 
 if __name__ == "__main__":
