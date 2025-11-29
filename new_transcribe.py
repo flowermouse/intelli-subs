@@ -20,7 +20,7 @@ def save_srt(subtitles, output_path):
             f.write(f"{i}\n{sub['start']} --> {sub['end']}\n{sub['text']}\n\n")
 
 
-def split_by_punctuation_with_word_timestamps(text, word_times):
+def split_by_punctuation_with_word_timestamps(text):
     """
     按句号、问号、感叹号、逗号分句，保留标点
     返回: [(句子文本, 起始词索引, 结束词索引), ...]
@@ -44,6 +44,38 @@ def split_by_punctuation_with_word_timestamps(text, word_times):
     if buf:
         sentences.append((buf.strip(), idx_map[0], idx_map[-1]))
     return sentences
+
+
+def merge_short_sentences(split_sentences, max_words=12):
+    """
+    合并短句，直到达到 max_words 限制或遇到非逗号结尾的句子
+    输入: [(句子文本, 起始词索引, 结束词索引), ...]
+    返回: [(合并后句子文本, 起始词索引, 结束词索引), ...]
+    """
+    comma_punctuations = {",", "，", "、"}
+    merged = []
+    current = None
+    word_count = 0
+    for sent, start_idx, end_idx in split_sentences:
+        sent_words = sent.split()
+        current_words = len(sent_words)
+        if not current:
+            current = [sent, start_idx, end_idx]
+            word_count = current_words
+            continue
+        prev_text = current[0].strip()
+        ends_with_comma = prev_text and prev_text[-1] in comma_punctuations
+        if ends_with_comma and word_count + current_words <= max_words:
+            current[0] += " " + sent
+            current[2] = end_idx
+            word_count += current_words
+        else:
+            merged.append(tuple(current))
+            current = [sent, start_idx, end_idx]
+            word_count = current_words
+    if current:
+        merged.append(tuple(current))
+    return merged
 
 
 def ffmpeg_convert(input_audio, output_audio):
@@ -74,7 +106,9 @@ def split_audio_by_silence(
     silence_ranges = silence.detect_silence(
         audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh
     )
-    silence_ranges = [(start / 1000.0, end / 1000.0) for start, end in silence_ranges]
+    silence_ranges = [
+        (start / 1000.0, end / 1000.0) for start, end in silence_ranges
+    ]
 
     segment_points = [0.0]
     target = float(chunk_length_sec)
@@ -83,7 +117,9 @@ def split_audio_by_silence(
         seg_start = segment_points[-1]
         seg_end = seg_start + target
         # 找到距离 seg_end 最近的静音点（给一点缓冲区）
-        candidates = [s for s in silence_ranges if seg_start + 60 < s[0] < seg_end + 60]
+        candidates = [
+            s for s in silence_ranges if seg_start + 60 < s[0] < seg_end + 60
+        ]
         if candidates:
             segment_points.append(candidates[0][0])
         else:
@@ -158,7 +194,9 @@ if __name__ == "__main__":
     all_srt_subs = []
 
     for chunk_path, chunk_start_offset in chunk_data_list:
-        print(f"正在处理分段: {chunk_path} (开始时间: {chunk_start_offset:.2f}s)")
+        print(
+            f"正在处理分段: {chunk_path} (开始时间: {chunk_start_offset:.2f}s)"
+        )
         output = asr_model.transcribe([chunk_path], timestamps=True)
 
         if not output or not output[0].timestamp:
@@ -194,44 +232,11 @@ if __name__ == "__main__":
                 continue
 
             split_sentences = split_by_punctuation_with_word_timestamps(
-                seg_text, seg_word_times
+                seg_text
             )
 
-            def merge_short_sentences(
-                split_sentences, seg_word_times, max_words=10
-            ):
-                comma_punctuations = {",", "，", "、"}
-                merged = []
-                current = None
-                word_count = 0
-                for sent, start_idx, end_idx in split_sentences:
-                    sent_words = sent.split()
-                    current_words = len(sent_words)
-                    if not current:
-                        current = [sent, start_idx, end_idx]
-                        word_count = current_words
-                        continue
-                    prev_text = current[0].strip()
-                    ends_with_comma = (
-                        prev_text and prev_text[-1] in comma_punctuations
-                    )
-                    if (
-                        ends_with_comma
-                        and word_count + current_words <= max_words
-                    ):
-                        current[0] += " " + sent
-                        current[2] = end_idx
-                        word_count += current_words
-                    else:
-                        merged.append(tuple(current))
-                        current = [sent, start_idx, end_idx]
-                        word_count = current_words
-                if current:
-                    merged.append(tuple(current))
-                return merged
-
             merged_sentences = merge_short_sentences(
-                split_sentences, seg_word_times
+                split_sentences, max_words=12
             )
 
             for sent, start_idx, end_idx in merged_sentences:
@@ -240,7 +245,9 @@ if __name__ == "__main__":
                 ):
                     continue
 
-                word_start = seg_word_times[start_idx]["start"] + chunk_start_offset
+                word_start = (
+                    seg_word_times[start_idx]["start"] + chunk_start_offset
+                )
                 word_end = seg_word_times[end_idx]["end"] + chunk_start_offset
 
                 srt_subs.append(
