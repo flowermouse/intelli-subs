@@ -167,20 +167,26 @@ def translate_batch_gemini(
         language_map[source_language], language_map[target_lang], json_input
     )
 
+    # 定义 JSON Schema：要求是字符串数组
+    response_json_schema = {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": len(texts_to_translate),
+        "maxItems": len(texts_to_translate),
+        "description": "与输入字幕一一对应的翻译结果数组，每个元素是翻译后的字幕文本。",
+    }
+
     try:
-        # Note: The 'client.models.generate_content' call might be slightly different
-        # depending on the exact 'google-generativeai' library version.
-        # This is based on a common recent version.
-        # You may need to adjust if you are using a very different version.
-        model = client.get_model(
-            "models/gemini-1.5-flash"
-        )  # More robust way to get model
-        response = model.generate_content(
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
             contents=prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",  # Ask for JSON output directly
-            ),
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": response_json_schema,
+            },
         )
+
+        # Gemini 在结构化输出模式下，response.text 会是一个合法的 JSON 字符串
         response_text = response.text.strip()
 
         translated_texts = json.loads(response_text)
