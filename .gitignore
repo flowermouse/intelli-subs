@@ -9,4 +9,6 @@ test.py
 *.flv
 *.wmv
 *.webm
+*.wav
+*.mp3
 index-tts
