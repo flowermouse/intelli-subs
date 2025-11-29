@@ -1,8 +1,14 @@
-google-generativeai
+openai-whisper
+google-genai
+openai
+sniffio
+zhipuai
 python-dotenv
 pydub
 ffmpeg-python
 torch
-openai-whisper
 tqdm
-zhipuai
+edge-tts
+demucs
+torchcodec
+# conda install -c conda-forge ffmpeg
