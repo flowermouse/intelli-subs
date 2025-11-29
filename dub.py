@@ -2,6 +2,7 @@ import re
 import os
 import subprocess
 from pydub import AudioSegment
+from time import sleep
 
 SAMPLE_RATE = 24000  # edge-tts 默认输出 24kHz
 CHANNELS = 1
@@ -49,7 +50,7 @@ def generate_audio_for_text(text, idx, voice_name="zh-CN-YunxiaoMultilingualNeur
         "--write-media", out_mp3
     ]
     if rate:
-        cmd.extend(["--rate", rate])
+        cmd.extend([f"--rate={rate}"])
     subprocess.run(cmd, check=True)
     return out_mp3
 
@@ -64,13 +65,15 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
 
         print(f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)")
 
-        try:
-            mp3_path = generate_audio_for_text(text, i, voice_name)
-            seg = AudioSegment.from_file(mp3_path)
-            seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
-        except Exception as e:
-            print(f"   ⚠️  生成失败: {e}，跳过本条字幕")
-            exit(1)
+        while True:
+            try:
+                mp3_path = generate_audio_for_text(text, i, voice_name)
+                seg = AudioSegment.from_file(mp3_path)
+                seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
+                break
+            except Exception as e:
+                print(f"   ⚠️  生成失败: {e}，跳过本条字幕")
+            sleep(1)
         
         # 下一条字幕的开始时间 - 当前字幕的开始时间 作为阈值
         threshold = subtitles[i+1]["start_ms"] - start_ms if i + 1 < len(subtitles) else float('inf')
@@ -91,14 +94,16 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             rate_str = f"{p:+d}%"
 
             print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
-            try:
-                mp3_path = generate_audio_for_text(text, i, voice_name, rate_str)
-                seg = AudioSegment.from_file(mp3_path)
-                seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
-                audio_duration = max(1, len(seg))
-            except Exception as e:
-                print(f"   ⚠️  重生成失败: {e}")
-                exit(1)
+            while True:
+                try:
+                    mp3_path = generate_audio_for_text(text, i, voice_name, rate_str)
+                    seg = AudioSegment.from_file(mp3_path)
+                    seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
+                    audio_duration = max(1, len(seg))
+                    break
+                except Exception as e:
+                    print(f"   ⚠️  重生成失败: {e}")
+                sleep(1)
 
         # 删除临时 mp3 文件（保守删除，避免残留）
         try:
@@ -139,8 +144,8 @@ def save_wave(filename, audio: AudioSegment):
     audio.export(filename, format="wav")
 
 def main():
-    srt_file = "test.srt"  # 替换为你的 SRT 文件路径
-    output_file = "output.wav"
+    srt_file = "1_zh.srt"  # 替换为你的 SRT 文件路径
+    output_file = "1.wav"
     voice_name = "zh-CN-YunxiaoMultilingualNeural"
 
     print(f"📖 解析字幕文件: {srt_file}")

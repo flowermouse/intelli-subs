@@ -11,4 +11,6 @@ test.py
 *.webm
 *.wav
 *.mp3
+*.m4a
+*.aac
 index-tts
