@@ -23,9 +23,13 @@ ffmpeg -i $input_video -i out_mix.m4a \
   ${input_video%.mp4}_dubbed.mp4
 
 # cleanup
-rm ${input_video%.mp4}.srt
-rm ${input_video%.mp4}_zh.srt
 rm ${input_video%.mp4}.wav
 rm ${input_video%.mp4}.mp3
 rm out_mix.m4a
 rm -r separated
+rm -r temp
+
+# final output
+# ${input_video%.mp4}.srt
+# ${input_video%.mp4}_zh.srt
+# ${input_video%.mp4}_dubbed.mp4
