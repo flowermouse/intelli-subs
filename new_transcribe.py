@@ -6,7 +6,7 @@ import os
 from pydub import AudioSegment, silence
 
 
-def format_time_srt(seconds: float) -> str:
+def format_time_srt(seconds: float) -> str: 
     ms = int((seconds - int(seconds)) * 1000)
     s = int(seconds) % 60
     m = (int(seconds) // 60) % 60
