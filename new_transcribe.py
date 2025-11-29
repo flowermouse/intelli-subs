@@ -6,7 +6,7 @@ import os
 from pydub import AudioSegment, silence
 
 
-def format_time_srt(seconds: float) -> str: 
+def format_time_srt(seconds: float) -> str:
     ms = int((seconds - int(seconds)) * 1000)
     s = int(seconds) % 60
     m = (int(seconds) // 60) % 60
@@ -20,7 +20,7 @@ def save_srt(subtitles, output_path):
             f.write(f"{i}\n{sub['start']} --> {sub['end']}\n{sub['text']}\n\n")
 
 
-def split_by_punctuation_with_word_timestamps(text):
+def split_by_punctuation(text):
     """
     按句号、问号、感叹号、逗号分句，保留标点
     返回: [(句子文本, 起始词索引, 结束词索引), ...]
@@ -231,9 +231,7 @@ if __name__ == "__main__":
                 )
                 continue
 
-            split_sentences = split_by_punctuation_with_word_timestamps(
-                seg_text
-            )
+            split_sentences = split_by_punctuation(seg_text)
 
             merged_sentences = merge_short_sentences(
                 split_sentences, max_words=12
