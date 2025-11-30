@@ -1,6 +1,7 @@
-input_video="2.mp4"
-
 # transcibe
+
+input_video="3.mp4"
+
 python new_transcribe.py $input_video -o ${input_video%.mp4}.srt 
 
 # translate

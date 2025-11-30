@@ -1,15 +1,18 @@
 import re
 import os
+import math
 import subprocess
-from pydub import AudioSegment
-from time import sleep
 import argparse
+from time import sleep
+from pydub import AudioSegment
 
 SAMPLE_RATE = 24000  # edge-tts 默认输出 24kHz
 CHANNELS = 1
 
-def parse_srt(file_path):
-    """解析 SRT 文件，返回字幕列表 [{'start_ms': int, 'end_ms': int, 'text': str}, ...]"""
+def parse_srt(file_path, merge_gap_ms=300):
+    """解析 SRT 文件，返回字幕列表 [{'start_ms': int, 'end_ms': int, 'text': str}, ...]
+       若相邻两条字幕的间隔 <= merge_gap_ms，则合并为一条。
+    """
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -17,7 +20,7 @@ def parse_srt(file_path):
         r"(\d+)\s+([\d:,]+)\s+-->\s+([\d:,]+)\s+([\s\S]+?)(?=\n\n|\Z)",
         re.MULTILINE,
     )
-    subtitles = []
+    raw_subtitles = []
 
     for match in pattern.finditer(content):
         index = int(match.group(1))
@@ -25,9 +28,34 @@ def parse_srt(file_path):
         end = srt_time_to_ms(match.group(3))
         text = match.group(4).strip().replace("\n", " ")
 
-        subtitles.append({"index": index, "start_ms": start, "end_ms": end, "text": text})
+        raw_subtitles.append(
+            {"index": index, "start_ms": start, "end_ms": end, "text": text}
+        )
 
-    return subtitles
+    if not raw_subtitles:
+        return []
+
+    # 合并间隔 <= merge_gap_ms 的相邻字幕
+    merged = []
+    current = raw_subtitles[0].copy()
+
+    for sub in raw_subtitles[1:]:
+        gap = sub["start_ms"] - current["end_ms"]
+        if gap <= merge_gap_ms:
+            # 合并：起始时间取当前的，结束时间取后一条的，文本拼接
+            current["end_ms"] = max(current["end_ms"], sub["end_ms"])
+            current["text"] = current["text"].rstrip() + " " + sub["text"].lstrip()
+        else:
+            merged.append(current)
+            current = sub.copy()
+
+    merged.append(current)
+
+    # 重新编号 index
+    for i, sub in enumerate(merged, start=1):
+        sub["index"] = i
+
+    return merged
 
 def srt_time_to_ms(time_str):
     """将 SRT 时间格式 (HH:MM:SS,mmm) 转换为毫秒"""
@@ -89,9 +117,9 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             # 将因子转为 edge-tts 的 rate 百分比 p
             # S=1.5 -> +50%
             # S=0.8 -> -20%
-            p = int(round((S - 1) * 100))
+            p = int(math.ceil((S - 1) * 100))
             # 限制百分比范围，避免不合理数值（可根据需要调整）
-            p = max(-80, min(300, p))
+            p = max(-50, min(150, p))
             rate_str = f"{p:+d}%"
 
             print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
