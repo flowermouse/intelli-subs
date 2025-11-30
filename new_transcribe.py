@@ -153,8 +153,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chunk-minutes",
         type=int,
-        default=5,
-        help="每个分段的最大时长（分钟），默认5分钟",
+        default=8,
+        help="每个分段的最大时长（分钟），默认8分钟",
     )
     args = parser.parse_args()
 
