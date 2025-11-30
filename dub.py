@@ -101,7 +101,7 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
                 seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
                 break
             except Exception as e:
-                print(f"   ⚠️  生成失败: {e}，跳过本条字幕")
+                print(f"   ⚠️  生成失败: {e}, 重试中...")
             sleep(1)
         
         # 下一条字幕的开始时间 - 当前字幕的开始时间 作为阈值
@@ -122,17 +122,24 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             p = max(-50, min(150, p))
             rate_str = f"{p:+d}%"
 
-            print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
             while True:
+                print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
                 try:
                     mp3_path = generate_audio_for_text(text, i, voice_name, rate_str)
                     seg = AudioSegment.from_file(mp3_path)
                     seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
                     audio_duration = max(1, len(seg))
-                    break
+                    if audio_duration <= threshold:
+                        break
+                    else:
+                        new_S = audio_duration / subtitle_duration
+                        # 重新计算 rate 百分比，需要在上一轮基础上调整
+                        S = new_S * S  # 乘以上一次的 S
+                        p = int(math.ceil((S - 1) * 100))
+                        p = max(-50, min(150, p))
+                        rate_str = f"{p:+d}%"
                 except Exception as e:
-                    print(f"   ⚠️  重生成失败: {e}")
-                sleep(1)
+                    print(f"   ⚠️  重生成失败: {e}, 重试中...")
 
         # 删除临时 mp3 文件（保守删除，避免残留）
         try:
@@ -140,28 +147,11 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
         except Exception:
             pass
 
-        # 确定本段最终目标时长：不超过 threshold，且以字幕时长为主
-        desired_len = min(threshold, subtitle_duration)
-
-        # 截断或补静音到 desired_len
-        if len(seg) > desired_len:
-            seg = seg[:desired_len]
-        elif len(seg) < desired_len:
-            seg += AudioSegment.silent(duration=desired_len - len(seg), frame_rate=SAMPLE_RATE)
-
-        # 在加入之前，保证 merged 的当前位置对齐到本句 start
-        if current_position < start_ms:
-            # 在本句开始前插入静音
-            pad = start_ms - current_position
-            merged += AudioSegment.silent(duration=pad, frame_rate=SAMPLE_RATE)
-            current_position = start_ms
-        elif current_position > start_ms:
-            # 已经超过了本句开始时间，裁掉 seg 开头的重叠部分
-            overlap = current_position - start_ms
-            if overlap >= len(seg):
-                # 本段完全被覆盖，跳过
-                continue
-            seg = seg[overlap:]
+        if len(seg) < threshold:
+            seg += AudioSegment.silent(duration=threshold - len(seg), frame_rate=SAMPLE_RATE)
+        else:
+            # 这个分支一般不会触发，因为上面已经控制了长度
+            seg = seg[:threshold]
         
         # 添加本段并推进当前位置
         merged += seg

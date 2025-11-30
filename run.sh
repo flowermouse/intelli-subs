@@ -15,7 +15,7 @@ ffmpeg -i $input_video -map 0:a:0 ${input_video%.mp4}.mp3
 demucs -d cpu --two-stems=vocals ${input_video%.mp4}.mp3
 
 ffmpeg -i separated/htdemucs/${input_video%.mp4}/no_vocals.wav -i ${input_video%.mp4}.wav \
-  -filter_complex amix=inputs=2:normalize=1 \
+  -filter_complex amix=inputs=2:normalize=0 \
   -c:a aac -b:a 192k out_mix.m4a
 
 ffmpeg -i $input_video -i out_mix.m4a \
