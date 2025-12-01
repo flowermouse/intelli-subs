@@ -146,12 +146,13 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             os.remove(mp3_path)
         except Exception:
             pass
-
-        if len(seg) < threshold:
-            seg += AudioSegment.silent(duration=threshold - len(seg), frame_rate=SAMPLE_RATE)
-        else:
-            # 这个分支一般不会触发，因为上面已经控制了长度
-            seg = seg[:threshold]
+        
+        if threshold != float('inf'): # 非最后一条字幕
+            if len(seg) < threshold:
+                seg += AudioSegment.silent(duration=threshold - len(seg), frame_rate=SAMPLE_RATE)
+            else:
+                # 这个分支一般不会触发，因为上面已经控制了长度
+                seg = seg[:threshold]
         
         # 添加本段并推进当前位置
         merged += seg
