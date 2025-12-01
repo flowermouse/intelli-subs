@@ -119,9 +119,10 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             # S=0.8 -> -20%
             p = int(math.ceil((S - 1) * 100))
             # 限制百分比范围，避免不合理数值（可根据需要调整）
-            p = max(-50, min(150, p))
+            p = max(-50, min(200, p))
             rate_str = f"{p:+d}%"
 
+            times = 0
             while True:
                 print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
                 try:
@@ -136,10 +137,14 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
                         # 重新计算 rate 百分比，需要在上一轮基础上调整
                         S = new_S * S  # 乘以上一次的 S
                         p = int(math.ceil((S - 1) * 100))
-                        p = max(-50, min(150, p))
+                        p = max(-50, min(200, p))
                         rate_str = f"{p:+d}%"
                 except Exception as e:
                     print(f"   ⚠️  重生成失败: {e}, 重试中...")
+                times += 1
+                if times >= 5:
+                    print("   ⚠️  达到最大重试次数，使用当前音频。")
+                    break
 
         # 删除临时 mp3 文件（保守删除，避免残留）
         try:
@@ -151,7 +156,6 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             if len(seg) < threshold:
                 seg += AudioSegment.silent(duration=threshold - len(seg), frame_rate=SAMPLE_RATE)
             else:
-                # 这个分支一般不会触发，因为上面已经控制了长度
                 seg = seg[:threshold]
         
         # 添加本段并推进当前位置

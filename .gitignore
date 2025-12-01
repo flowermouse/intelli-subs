@@ -13,4 +13,9 @@ test.py
 *.mp3
 *.m4a
 *.aac
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
 index-tts
