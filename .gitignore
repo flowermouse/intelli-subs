@@ -19,3 +19,5 @@ test.py
 *.gif
 *.webp
 index-tts
+temp
+separated
