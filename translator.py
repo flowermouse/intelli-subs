@@ -6,6 +6,7 @@ from pathlib import Path
 from google import genai
 from zhipuai import ZhipuAI
 from dotenv import load_dotenv
+from time import sleep
 import requests
 
 # 加载环境变量
@@ -191,6 +192,7 @@ def translate_batch_gemini(
         translated_texts = json.loads(response_text)
 
         if isinstance(translated_texts, list):
+            sleep(5)  # 避免速率限制
             return translated_texts
         else:
             print("错误：API未返回有效的JSON数组格式。")

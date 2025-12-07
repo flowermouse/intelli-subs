@@ -1,6 +1,6 @@
 # transcibe
 
-input_video="6.mp4"
+input_video="7.mp4"
 
 python new_transcribe.py $input_video -o ${input_video%.mp4}.srt 
 
@@ -8,7 +8,9 @@ python new_transcribe.py $input_video -o ${input_video%.mp4}.srt
 python translator.py ${input_video%.mp4}.srt --agent gemini -o ${input_video%.mp4}_zh.srt
 
 # dubbing
-python dub.py --srt ${input_video%.mp4}_zh.srt --output_file ${input_video%.mp4}.wav
+python dub_edge.py --srt ${input_video%.mp4}_zh.srt --output_file ${input_video%.mp4}.wav
+
+python dub_voxcpm.py --srt ${input_video%.mp4}_zh.srt --output_file ${input_video%.mp4}.wav
 
 # 分离背景音
 ffmpeg -i $input_video -map 0:a:0 ${input_video%.mp4}.mp3
