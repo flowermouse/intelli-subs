@@ -18,6 +18,8 @@ test.py
 *.jpeg
 *.gif
 *.webp
+*.txt
+__pycache__
 index-tts
 temp
 separated
