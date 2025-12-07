@@ -89,14 +89,15 @@ def align_and_merge_audio(subtitles, model):
             else float("inf")
         )
         seg = generate_audio_for_text(text, model, subtitle_duration)
-        if threshold != float("inf"):
-            if len(seg) > threshold:
-                seg = seg[:threshold]
-            else:
-                silence_duration = threshold - len(seg)
-                seg += AudioSegment.silent(
-                    duration=silence_duration, frame_rate=SAMPLE_RATE
-                )
+        if threshold == float("inf"):
+            continue
+        if len(seg) >= threshold:
+            seg = seg[:threshold]
+        else:
+            silence_duration = threshold - len(seg)
+            seg += AudioSegment.silent(
+                duration=silence_duration, frame_rate=SAMPLE_RATE
+            )
         merged += seg
     return merged
 
