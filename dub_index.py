@@ -1,10 +1,10 @@
 import re
 import os
-import librosa
 import argparse
 import numpy as np
 import soundfile as sf
 from indextts.infer_v2 import IndexTTS2
+from pydub import AudioSegment
 
 PROMPT_AUDIO_PATH = "refs/Newsom.wav"
 SAMPLE_RATE = 22050
@@ -62,13 +62,29 @@ def generate_audio_for_text(text, model, duration):
         output_path=wav_path,
         verbose=False,
     )
-    wav, sr = librosa.load(wav_path, sr=SAMPLE_RATE)
-    target_len = int(duration / 1000 * SAMPLE_RATE)
-    ratio = len(wav) / target_len
-    adjusted_wav = librosa.effects.time_stretch(wav, rate=ratio)
+    # 用 pydub 进行时长调整
+    sound = AudioSegment.from_wav(wav_path)
+    target_len_ms = int(duration)
+    # 计算需要的倍速
+    orig_len_ms = len(sound)
+    if orig_len_ms == 0:
+        playback_speed = 1.0
+    else:
+        playback_speed = orig_len_ms / target_len_ms
+    # 限制倍速范围，避免失真
+    playback_speed = min(max(playback_speed, 0.9), 1.1)
+    adjusted_sound = sound.speedup(playback_speed=playback_speed)
+    # 裁剪或补零
+    if len(adjusted_sound) < target_len_ms:
+        silence = AudioSegment.silent(duration=target_len_ms - len(adjusted_sound), frame_rate=SAMPLE_RATE)
+        adjusted_sound = adjusted_sound + silence
+    else:
+        adjusted_sound = adjusted_sound[:target_len_ms]
+    # 转为 numpy 数组
+    samples = np.array(adjusted_sound.get_array_of_samples()).astype(np.float32) / (2 ** 15)
     # 删除临时文件
     os.remove(wav_path)
-    return adjusted_wav
+    return samples
 
 def align_and_merge_audio(subtitles, model):
     segments = []
@@ -103,7 +119,7 @@ def main():
         cfg_path=args.config,
         model_dir=args.model_dir,
         use_fp16=False,
-        use_cuda_kernel=False,
+        use_cuda_kernel=True,
         use_deepspeed=False,
     )
 
