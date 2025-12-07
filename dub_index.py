@@ -1,13 +1,12 @@
 import re
 import os
 import argparse
-import numpy as np
-import soundfile as sf
-from indextts.infer_v2 import IndexTTS2
 from pydub import AudioSegment
+from indextts.infer_v2 import IndexTTS2
 
 PROMPT_AUDIO_PATH = "refs/Newsom.wav"
 SAMPLE_RATE = 22050
+
 
 def parse_srt(file_path, merge_gap_ms=300):
     with open(file_path, "r", encoding="utf-8") as f:
@@ -33,7 +32,9 @@ def parse_srt(file_path, merge_gap_ms=300):
         gap = sub["start_ms"] - current["end_ms"]
         if gap <= merge_gap_ms:
             current["end_ms"] = max(current["end_ms"], sub["end_ms"])
-            current["text"] = current["text"].rstrip() + " " + sub["text"].lstrip()
+            current["text"] = (
+                current["text"].rstrip() + " " + sub["text"].lstrip()
+            )
         else:
             merged.append(current)
             current = sub.copy()
@@ -41,6 +42,7 @@ def parse_srt(file_path, merge_gap_ms=300):
     for i, sub in enumerate(merged, start=1):
         sub["index"] = i
     return merged
+
 
 def srt_time_to_ms(time_str):
     hours, minutes, seconds = time_str.split(":")
@@ -53,66 +55,68 @@ def srt_time_to_ms(time_str):
     )
     return total_ms
 
+
 def generate_audio_for_text(text, model, duration):
-    # 用 IndexTTS2 生成音频
-    wav_path = f"tmp_{np.random.randint(1e9)}.wav"
+    wav_path = f"tmp_{os.getpid()}_{abs(hash(text)) % (10**8)}.wav"
     model.infer(
         spk_audio_prompt=PROMPT_AUDIO_PATH,
         text=text,
         output_path=wav_path,
         verbose=False,
     )
-    # 用 pydub 进行时长调整
     sound = AudioSegment.from_wav(wav_path)
     target_len_ms = int(duration)
-    # 计算需要的倍速
     orig_len_ms = len(sound)
-    if orig_len_ms == 0:
-        playback_speed = 1.0
-    else:
-        playback_speed = orig_len_ms / target_len_ms
-    # 限制倍速范围，避免失真
-    playback_speed = min(max(playback_speed, 0.9), 1.1)
+    playback_speed = orig_len_ms / target_len_ms
     adjusted_sound = sound.speedup(playback_speed=playback_speed)
-    # 裁剪或补零
-    if len(adjusted_sound) < target_len_ms:
-        silence = AudioSegment.silent(duration=target_len_ms - len(adjusted_sound), frame_rate=SAMPLE_RATE)
-        adjusted_sound = adjusted_sound + silence
-    else:
-        adjusted_sound = adjusted_sound[:target_len_ms]
-    # 转为 numpy 数组
-    samples = np.array(adjusted_sound.get_array_of_samples()).astype(np.float32) / (2 ** 15)
-    # 删除临时文件
     os.remove(wav_path)
-    return samples
+    return adjusted_sound
+
 
 def align_and_merge_audio(subtitles, model):
-    segments = []
+    merged = AudioSegment.silent(duration=0, frame_rate=SAMPLE_RATE)
     for i, sub in enumerate(subtitles):
         start_ms = sub["start_ms"]
         end_ms = sub["end_ms"]
         text = sub["text"]
-        print(f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)")
-        subtitle_duration = max(1, end_ms - start_ms)
+        print(
+            f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)"
+        )
+        subtitle_duration = end_ms - start_ms
+        threshold = (
+            subtitles[i + 1]["start_ms"] - start_ms
+            if i + 1 < len(subtitles)
+            else float("inf")
+        )
         seg = generate_audio_for_text(text, model, subtitle_duration)
-        target_len = int(subtitle_duration / 1000 * SAMPLE_RATE)
-        if len(seg) < target_len:
-            seg = np.pad(seg, (0, target_len - len(seg)), mode="constant")
-        else:
-            seg = seg[:target_len]
-        segments.append(seg)
-    merged = np.concatenate(segments)
+        if threshold != float("inf"):
+            if len(seg) > threshold:
+                seg = seg[:threshold]
+            else:
+                silence_duration = threshold - len(seg)
+                seg += AudioSegment.silent(
+                    duration=silence_duration, frame_rate=SAMPLE_RATE
+                )
+        merged += seg
     return merged
 
-def save_wave(filename, audio: np.ndarray):
-    sf.write(filename, audio, SAMPLE_RATE)
 
 def main():
-    parser = argparse.ArgumentParser(description="根据 SRT 文件生成配音音频（IndexTTS2）")
+    parser = argparse.ArgumentParser(
+        description="根据 SRT 文件生成配音音频（IndexTTS2）"
+    )
     parser.add_argument("--srt", required=True, help="输入 SRT 字幕文件路径")
-    parser.add_argument("--output_file", required=True, help="输出音频文件路径（wav 格式）")
-    parser.add_argument("--config", default="checkpoints/config.yaml", help="IndexTTS2 配置文件路径")
-    parser.add_argument("--model_dir", default="checkpoints", help="IndexTTS2 模型目录")
+    parser.add_argument(
+        "--output_file", required=True, help="输出音频文件路径（wav 格式）"
+    )
+    parser.add_argument(
+        "--config",
+        default="checkpoints/config.yaml",
+        help="IndexTTS2 配置文件路径",
+    )
+    parser.add_argument(
+        "--model_dir", default="checkpoints", help="IndexTTS2 模型目录"
+    )
     args = parser.parse_args()
 
     model = IndexTTS2(
@@ -131,8 +135,9 @@ def main():
     merged_audio = align_and_merge_audio(subtitles, model)
 
     print(f"\n💾 保存音频文件: {args.output_file}")
-    save_wave(filename=args.output_file, audio=merged_audio)
+    merged_audio.export(args.output_file, format="wav")
     print("✅ 完成！")
+
 
 if __name__ == "__main__":
     main()

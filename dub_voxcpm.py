@@ -1,17 +1,17 @@
 import re
-import librosa
 import argparse
 import numpy as np
-import soundfile as sf
 from voxcpm import VoxCPM
+from pydub import AudioSegment
 
 PROMPT_AUDIO_PATH = "refs/Newsom.wav"
 PROMPT_AUDIO_TEXT = "Honestly, a few words about the events of last few days. This past weekend federal agents conducted large scale raids in and around los Angelas, those raids continued as I speak. California is no stranger to immigration."
 SAMPLE_RATE = 44100
 
+
 def parse_srt(file_path, merge_gap_ms=300):
     """解析 SRT 文件，返回字幕列表 [{'start_ms': int, 'end_ms': int, 'text': str}, ...]
-       若相邻两条字幕的间隔 <= merge_gap_ms，则合并为一条。
+    若相邻两条字幕的间隔 <= merge_gap_ms，则合并为一条。
     """
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -44,7 +44,9 @@ def parse_srt(file_path, merge_gap_ms=300):
         if gap <= merge_gap_ms:
             # 合并：起始时间取当前的，结束时间取后一条的，文本拼接
             current["end_ms"] = max(current["end_ms"], sub["end_ms"])
-            current["text"] = current["text"].rstrip() + " " + sub["text"].lstrip()
+            current["text"] = (
+                current["text"].rstrip() + " " + sub["text"].lstrip()
+            )
         else:
             merged.append(current)
             current = sub.copy()
@@ -56,6 +58,7 @@ def parse_srt(file_path, merge_gap_ms=300):
         sub["index"] = i
 
     return merged
+
 
 def srt_time_to_ms(time_str):
     """将 SRT 时间格式 (HH:MM:SS,mmm) 转换为毫秒"""
@@ -69,8 +72,9 @@ def srt_time_to_ms(time_str):
     )
     return total_ms
 
+
 def generate_audio_for_text(text, model, duration):
-    """用 VoxCPM 生成音频，并用 librosa 调整到 duration 长度"""
+    """用 VoxCPM 生成音频，并用 pydub 调整到 duration 长度（全内存，无需保存文件）"""
     wav = model.generate(
         text=text,
         prompt_wav_path=PROMPT_AUDIO_PATH,
@@ -83,37 +87,56 @@ def generate_audio_for_text(text, model, duration):
         retry_badcase_max_times=3,
         retry_badcase_ratio_threshold=6.0,
     )
-    target_len = int(duration / 1000 * SAMPLE_RATE)  # 目标采样点数
-    ratio = len(wav) / target_len
-    adjusted_wav = librosa.effects.time_stretch(wav, rate=ratio) # rate > 1.0 -> 加速，< 1.0 -> 减速
-    return adjusted_wav
+    # numpy -> int16 bytes
+    if wav.dtype != np.int16:
+        wav_int16 = (wav * 32767).astype(np.int16)
+    else:
+        wav_int16 = wav
+    audio_bytes = wav_int16.tobytes()
+    sound = AudioSegment(
+        data=audio_bytes, sample_width=2, frame_rate=SAMPLE_RATE, channels=1
+    )
+    target_len_ms = int(duration)
+    orig_len_ms = len(sound)
+    playback_speed = orig_len_ms / target_len_ms
+    adjusted_sound = sound.speedup(playback_speed=playback_speed)
+    return adjusted_sound
+
 
 def align_and_merge_audio(subtitles, model):
-    segments = []
+    merged = AudioSegment.silent(duration=0, frame_rate=SAMPLE_RATE)
     for i, sub in enumerate(subtitles):
         start_ms = sub["start_ms"]
         end_ms = sub["end_ms"]
         text = sub["text"]
-        print(f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)")
-        subtitle_duration = max(1, end_ms - start_ms)
+        print(
+            f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)"
+        )
+        subtitle_duration = end_ms - start_ms
+        threshold = (
+            subtitles[i + 1]["start_ms"] - start_ms
+            if i + 1 < len(subtitles)
+            else float("inf")
+        )
         seg = generate_audio_for_text(text, model, subtitle_duration)
-        # 补齐长度
-        target_len = int(subtitle_duration / 1000 * SAMPLE_RATE)
-        if len(seg) < target_len:
-            seg = np.pad(seg, (0, target_len - len(seg)), mode="constant")
-        else:
-            seg = seg[:target_len]
-        segments.append(seg)
-    merged = np.concatenate(segments)
+        if threshold != float("inf"):
+            if len(seg) > threshold:
+                seg = seg[:threshold]
+            else:
+                silence_duration = threshold - len(seg)
+                seg += AudioSegment.silent(
+                    duration=silence_duration, frame_rate=SAMPLE_RATE
+                )
+        merged += seg
     return merged
 
-def save_wave(filename, audio: np.ndarray):
-    sf.write(filename, audio, SAMPLE_RATE)
 
 def main():
     parser = argparse.ArgumentParser(description="根据 SRT 文件生成配音音频")
     parser.add_argument("--srt", required=True, help="输入 SRT 字幕文件路径")
-    parser.add_argument("--output_file", required=True, help="输出音频文件路径（wav 格式）")
+    parser.add_argument(
+        "--output_file", required=True, help="输出音频文件路径（wav 格式）"
+    )
     args = parser.parse_args()
 
     model = VoxCPM.from_pretrained("openbmb/VoxCPM1.5")
@@ -126,8 +149,9 @@ def main():
     merged_audio = align_and_merge_audio(subtitles, model)
 
     print(f"\n💾 保存音频文件: {args.output_file}")
-    save_wave(filename=args.output_file, audio=merged_audio)
+    merged_audio.export(args.output_file, format="wav")
     print("✅ 完成！")
+
 
 if __name__ == "__main__":
     main()

@@ -9,9 +9,10 @@ from pydub import AudioSegment
 SAMPLE_RATE = 24000  # edge-tts 默认输出 24kHz
 CHANNELS = 1
 
+
 def parse_srt(file_path, merge_gap_ms=300):
     """解析 SRT 文件，返回字幕列表 [{'start_ms': int, 'end_ms': int, 'text': str}, ...]
-       若相邻两条字幕的间隔 <= merge_gap_ms，则合并为一条。
+    若相邻两条字幕的间隔 <= merge_gap_ms，则合并为一条。
     """
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -44,7 +45,9 @@ def parse_srt(file_path, merge_gap_ms=300):
         if gap <= merge_gap_ms:
             # 合并：起始时间取当前的，结束时间取后一条的，文本拼接
             current["end_ms"] = max(current["end_ms"], sub["end_ms"])
-            current["text"] = current["text"].rstrip() + " " + sub["text"].lstrip()
+            current["text"] = (
+                current["text"].rstrip() + " " + sub["text"].lstrip()
+            )
         else:
             merged.append(current)
             current = sub.copy()
@@ -56,6 +59,7 @@ def parse_srt(file_path, merge_gap_ms=300):
         sub["index"] = i
 
     return merged
+
 
 def srt_time_to_ms(time_str):
     """将 SRT 时间格式 (HH:MM:SS,mmm) 转换为毫秒"""
@@ -69,21 +73,30 @@ def srt_time_to_ms(time_str):
     )
     return total_ms
 
-def generate_audio_for_text(text, idx, voice_name="zh-CN-YunxiaoMultilingualNeural", rate=None):
+
+def generate_audio_for_text(
+    text, idx, voice_name="zh-CN-YunxiaoMultilingualNeural", rate=None
+):
     """用 edge-tts 生成音频，返回 mp3 文件路径"""
     out_mp3 = f"tmp_{idx}.mp3"
     cmd = [
         "edge-tts",
-        "--voice", voice_name,
-        "--text", text,
-        "--write-media", out_mp3
+        "--voice",
+        voice_name,
+        "--text",
+        text,
+        "--write-media",
+        out_mp3,
     ]
     if rate:
         cmd.extend([f"--rate={rate}"])
     subprocess.run(cmd, check=True)
     return out_mp3
 
-def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural"):
+
+def align_and_merge_audio(
+    subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural"
+):
     merged = AudioSegment.silent(duration=0, frame_rate=SAMPLE_RATE)
     current_position = 0
 
@@ -92,7 +105,9 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
         end_ms = sub["end_ms"]
         text = sub["text"]
 
-        print(f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)")
+        print(
+            f"[{i+1}/{len(subtitles)}] 生成音频: {text[:30]}... ({start_ms}ms -> {end_ms}ms)"
+        )
 
         while True:
             try:
@@ -103,14 +118,22 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             except Exception as e:
                 print(f"   ⚠️  生成失败: {e}, 重试中...")
             sleep(1)
-        
+
         # 下一条字幕的开始时间 - 当前字幕的开始时间 作为阈值
-        threshold = subtitles[i+1]["start_ms"] - start_ms if i + 1 < len(subtitles) else float('inf')
+        threshold = (
+            subtitles[i + 1]["start_ms"] - start_ms
+            if i + 1 < len(subtitles)
+            else float("inf")
+        )
         subtitle_duration = max(1, end_ms - start_ms)  # 毫秒
         audio_duration = max(1, len(seg))  # 毫秒
 
         # 如果时长差异超过阈值，则用 rate 参数重新生成直到接近匹配（最多尝试若干次）
-        if audio_duration > threshold or audio_duration/subtitle_duration > 1.2 or audio_duration/subtitle_duration < 0.8:
+        if (
+            audio_duration > threshold
+            or audio_duration / subtitle_duration > 1.2
+            or audio_duration / subtitle_duration < 0.8
+        ):
 
             # 计算初始所需速度因子 S = audio_duration / subtitle_duration
             S = audio_duration / subtitle_duration
@@ -126,7 +149,9 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             while True:
                 print(f"   ➤ 尝试通过 edge-tts 调整速率重生成，rate={rate_str}")
                 try:
-                    mp3_path = generate_audio_for_text(text, i, voice_name, rate_str)
+                    mp3_path = generate_audio_for_text(
+                        text, i, voice_name, rate_str
+                    )
                     seg = AudioSegment.from_file(mp3_path)
                     seg = seg.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS)
                     audio_duration = max(1, len(seg))
@@ -151,21 +176,21 @@ def align_and_merge_audio(subtitles, voice_name="zh-CN-YunxiaoMultilingualNeural
             os.remove(mp3_path)
         except Exception:
             pass
-        
-        if threshold != float('inf'): # 非最后一条字幕
+
+        if threshold != float("inf"):  # 非最后一条字幕
             if len(seg) < threshold:
-                seg += AudioSegment.silent(duration=threshold - len(seg), frame_rate=SAMPLE_RATE)
+                seg += AudioSegment.silent(
+                    duration=threshold - len(seg), frame_rate=SAMPLE_RATE
+                )
             else:
                 seg = seg[:threshold]
-        
+
         # 添加本段并推进当前位置
         merged += seg
         current_position += len(seg)
 
     return merged
 
-def save_wave(filename, audio: AudioSegment):
-    audio.export(filename, format="wav")
 
 def main():
     # srt_file = "1_zh.srt"  # 替换为你的 SRT 文件路径
@@ -173,7 +198,9 @@ def main():
     # voice_name = "zh-CN-YunxiaoMultilingualNeural"
     parser = argparse.ArgumentParser(description="根据 SRT 文件生成配音音频")
     parser.add_argument("--srt", required=True, help="输入 SRT 字幕文件路径")
-    parser.add_argument("--output_file", required=True, help="输出音频文件路径（wav 格式）")
+    parser.add_argument(
+        "--output_file", required=True, help="输出音频文件路径（wav 格式）"
+    )
     parser.add_argument(
         "--voice_name",
         default="zh-CN-YunxiaoMultilingualNeural",
@@ -189,8 +216,9 @@ def main():
     merged_audio = align_and_merge_audio(subtitles, args.voice_name)
 
     print(f"\n💾 保存音频文件: {args.output_file}")
-    save_wave(filename=args.output_file, audio=merged_audio)
+    merged_audio.export(args.output_file, format="wav")
     print("✅ 完成！")
+
 
 if __name__ == "__main__":
     main()
