@@ -5,7 +5,7 @@ from voxcpm import VoxCPM
 from pydub import AudioSegment
 
 PROMPT_AUDIO_PATH = "refs/Newsom.wav"
-PROMPT_AUDIO_TEXT = "Honestly, a few words about the events of last few days. This past weekend federal agents conducted large scale raids in and around los Angelas, those raids continued as I speak. California is no stranger to immigration."
+PROMPT_AUDIO_TEXT = "Honestly, a few words about the events of last few days. This past weekend federal agents conducted large scale raids in and around los Angelas, those raids continued as I speak."
 SAMPLE_RATE = 44100
 
 
