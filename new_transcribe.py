@@ -188,7 +188,7 @@ if __name__ == "__main__":
     # ASR识别
     print("正在进行语音识别...")
     asr_model = nemo_asr.models.ASRModel.from_pretrained(
-        model_name="nvidia/parakeet-tdt-0.6b-v2"
+        model_name="nvidia/parakeet-tdt-0.6b-v3"
     )
 
     all_srt_subs = []
