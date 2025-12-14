@@ -1,11 +1,14 @@
 import re
+import os
 import argparse
+import subprocess
 import numpy as np
+import soundfile as sf
 from voxcpm import VoxCPM
 from pydub import AudioSegment
 
-PROMPT_AUDIO_PATH = "refs/Newsom.wav"
-PROMPT_AUDIO_TEXT = "Honestly, a few words about the events of last few days. This past weekend federal agents conducted large scale raids in and around los Angelas, those raids continued as I speak."
+PROMPT_AUDIO_PATH = "refs/sf.wav"
+PROMPT_AUDIO_TEXT = "那些有头有脸的焦俊居民完全不讲逻辑，把家门口当作拼死一搏的阵地，与他们陈腐乏味，死气沉沉的生活相对抗。为了得到免费的披萨，他们对别人撒谎，同时也自欺欺人，编造打电话订外卖的时间。"
 SAMPLE_RATE = 44100
 
 
@@ -73,8 +76,36 @@ def srt_time_to_ms(time_str):
     return total_ms
 
 
+def ffmpeg_time_stretch(wav: np.ndarray, speed: float) -> AudioSegment:
+    """使用 ffmpeg atempo 做高质量变速不变调"""
+    import tempfile
+
+    # 写入临时 wav
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f_in, \
+         tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f_out:
+        sf.write(f_in.name, wav, SAMPLE_RATE)
+
+        # atempo 变速；>2 或 <0.5 时可以先截断在这个范围
+        speed = max(0.5, min(2.0, float(speed)))
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-loglevel", "error",
+            "-i", f_in.name,
+            "-filter:a", f"atempo={speed}",
+            f_out.name,
+        ]
+        subprocess.run(cmd, check=True)
+
+        seg = AudioSegment.from_wav(f_out.name)
+
+    os.remove(f_in.name)
+    os.remove(f_out.name)
+    return seg
+
+
 def generate_audio_for_text(text, model, duration):
-    """用 VoxCPM 生成音频，并用 pydub 调整到 duration 长度（全内存，无需保存文件）"""
+    """用 VoxCPM 生成音频，并用 ffmpeg atempo 调整到 duration 长度"""
     wav = model.generate(
         text=text,
         prompt_wav_path=PROMPT_AUDIO_PATH,
@@ -87,20 +118,30 @@ def generate_audio_for_text(text, model, duration):
         retry_badcase_max_times=3,
         retry_badcase_ratio_threshold=6.0,
     )
-    # numpy -> int16 bytes
-    if wav.dtype != np.int16:
-        wav_int16 = (wav * 32767).astype(np.int16)
+
+    # VoxCPM 一般输出 float [-1, 1]，确保是 float32
+    wav = wav.astype(np.float32, copy=False)
+
+    # 原始/目标时长（毫秒）
+    orig_len_ms = len(wav) / SAMPLE_RATE * 1000.0
+    target_len_ms = max(1, int(duration))
+
+    # 需要的变速倍数：>1 加速，<1 减速
+    speed = orig_len_ms / target_len_ms
+
+    # 用 ffmpeg atempo 做高质量 time-stretch
+    seg = ffmpeg_time_stretch(wav, speed)
+
+    # 再精确裁剪/补静音到目标长度，避免累计误差
+    if len(seg) < target_len_ms:
+        seg += AudioSegment.silent(
+            duration=target_len_ms - len(seg),
+            frame_rate=SAMPLE_RATE,
+        )
     else:
-        wav_int16 = wav
-    audio_bytes = wav_int16.tobytes()
-    sound = AudioSegment(
-        data=audio_bytes, sample_width=2, frame_rate=SAMPLE_RATE, channels=1
-    )
-    target_len_ms = int(duration)
-    orig_len_ms = len(sound)
-    playback_speed = orig_len_ms / target_len_ms
-    adjusted_sound = sound.speedup(playback_speed=playback_speed)
-    return adjusted_sound
+        seg = seg[:target_len_ms]
+
+    return seg
 
 
 def align_and_merge_audio(subtitles, model):
@@ -120,7 +161,8 @@ def align_and_merge_audio(subtitles, model):
         )
         seg = generate_audio_for_text(text, model, subtitle_duration)
         if threshold == float("inf"):
-            continue
+            merged += seg
+            break
         if len(seg) >= threshold:
             seg = seg[:threshold]
         else:
