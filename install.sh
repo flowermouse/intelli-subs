@@ -27,6 +27,6 @@ demucs --two-stems=vocals ${input_video%.mp4}.mp3
 # voxcpm
 pip intall voxcpm
 # 第一次运行时会自动下载模型文件，也可以手动下载：
-hf download openbmb/VoxCPM1.5
+hf download openbmb/VoxCPM1.5 --local-dir .
 # Linux/MacOS: ~/.cache/huggingface/hub/models--openbmb--VoxCPM1.5/
 # 2 GB

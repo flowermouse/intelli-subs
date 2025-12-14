@@ -25,3 +25,8 @@ temp
 separated
 checkpoints
 data
+logs
+output
+finetune*/
+voxcpm1.5
+*.jsonl
