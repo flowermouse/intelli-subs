@@ -13,3 +13,4 @@ demucs
 torchcodec
 nemo_toolkit[asr]
 # conda install -c conda-forge ffmpeg
+# voxcpm
