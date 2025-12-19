@@ -19,6 +19,7 @@ test.py
 *.gif
 *.webp
 *.txt
+*.zip
 __pycache__
 index-tts
 temp
@@ -28,5 +29,6 @@ data
 logs
 output
 finetune*/
+v1/
 voxcpm1.5
 *.jsonl
