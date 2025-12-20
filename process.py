@@ -44,7 +44,7 @@ def main():
             continue
         audio = AudioSegment.from_file(mp3_path)
         segments = parse_srt(srt_path)
-        for seg in segments:
+        for seg in segments[1:]:  # skip the first segment
             start_ms = time_to_ms(seg['start'])
             end_ms = time_to_ms(seg['end'])
             audio_chunk = audio[start_ms:end_ms]

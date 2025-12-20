@@ -4,7 +4,7 @@ for f in *.*; do
 done
 
 # 使用 demucs 进行音频分离 vocals
-for f in *.mp3; do
+for f in *.m4a; do
   [ -e "$f" ] || continue
   demucs --device cuda --two-stems=vocals "$f"
 done
@@ -20,6 +20,12 @@ setopt +o nomatch
 for f in *.wav; do
   [ -e "$f" ] || continue
   whisper "$f" --language Chinese --model turbo --output_format srt
+done
+
+# 使用 funasr 进行音频转录
+for f in *.wav; do
+  [ -e "$f" ] || continue
+  python asr.py "$f" --output "${f%.wav}.srt"
 done
 
 cd ..
